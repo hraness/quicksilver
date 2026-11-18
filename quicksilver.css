@@ -1,0 +1,57 @@
+/* @hraness/quicksilver: the wordmark's box, focus ring and still/canvas swap.
+   Import it (`@hraness/quicksilver/quicksilver.css`) or inline it. Every value a site
+   may want to change is a custom property on the element:
+     --quicksilver-width    the box's inline size (default: fluid, 232 px to 440 px)
+     --quicksilver-aspect   the manifest's aspectRatio (default 10 / 3)
+     --quicksilver-focus    the focus ring (default 2px solid currentColor)
+     --quicksilver-focus-offset, --quicksilver-radius
+   The box is reserved before any script runs, so drawing never moves the page. */
+.quicksilver {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  inline-size: var(--quicksilver-width, clamp(232px, 60vw, 440px));
+  max-inline-size: 100%;
+  aspect-ratio: var(--quicksilver-aspect, 10 / 3);
+  margin-inline: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--quicksilver-radius, 12px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: scale .25s cubic-bezier(.3, 1.6, .5, 1);
+}
+.quicksilver:active { scale: .97; }
+.quicksilver:focus-visible {
+  outline: var(--quicksilver-focus, 2px solid currentColor);
+  outline-offset: var(--quicksilver-focus-offset, 4px);
+}
+.quicksilver picture, .quicksilver img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+}
+.quicksilver img { object-fit: contain; transition: opacity .4s ease; }
+.quicksilver .quicksilver-canvas {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .4s ease;
+}
+.quicksilver[data-quicksilver="live"] .quicksilver-canvas { opacity: 1; }
+.quicksilver[data-quicksilver="live"] img { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .quicksilver { transition: none; }
+  .quicksilver:active { scale: none; }
+}
+@media (forced-colors: active) {
+  .quicksilver .quicksilver-canvas { display: none; }
+  .quicksilver[data-quicksilver="live"] img { opacity: 1; }
+}
