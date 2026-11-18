@@ -129,16 +129,20 @@ export function createRenderer(
     powerPreference: "low-power", preserveDrawingBuffer: keep,
   });
   if (!gl) return undefined;
+  const fail = () => {
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+  };
+  const texels = field.width;
   const program = gl.createProgram();
   for (const [type, source] of [[gl.VERTEX_SHADER, VERTEX], [gl.FRAGMENT_SHADER, FRAGMENT]] as const) {
     const shader = gl.createShader(type);
-    if (!shader) return undefined;
+    if (!shader) { fail(); return undefined; }
     gl.shaderSource(shader, source);
     gl.compileShader(shader);
     gl.attachShader(program, shader);
   }
   gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return undefined;
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) { fail(); return undefined; }
   gl.useProgram(program);
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
@@ -164,7 +168,7 @@ export function createRenderer(
       if (!live) return;
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.uniform2f(R, canvas.width, canvas.height);
-      gl.uniform4f(B, box[0], box[1], box[2], field.width);
+      gl.uniform4f(B, box[0], box[1], box[2], texels);
       gl.uniform1f(T, time);
       gl.uniform3fv(P, pointer);
       gl.uniform3fv(W, rings);

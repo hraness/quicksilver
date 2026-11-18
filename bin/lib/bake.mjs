@@ -22,7 +22,7 @@ export const USAGE = `Usage: quicksilver-bake --word <text> --out <dir> [options
   --word <text>            The word to set (required).
   --out <dir>              Where to write the field, stills and manifest (required).
   --font <path>            A .woff2, .woff, .ttf or .otf (default: bundled Funnel Display).
-  --weight <100-900>       Font weight (default 700).
+  --weight <100-900>       Font weight (default 700; 300-700 for the bundled font).
   --width <px>             Still width in px: twice the widest the wordmark is shown (default 880).
   --band <0-1>             Share of the square field the box shows; aspect is 1 : band (default 0.3).
   --ink <0-1>              Widest the word may be, a share of the field (default 0.9).
@@ -38,7 +38,17 @@ const number = (value, name, min, max) => {
 };
 
 /** The bake's options from argv, with defaults, checked. */
+export class UsageError extends Error {}
+
 export function parseBakeArgs(argv) {
+  try {
+    return parseChecked(argv);
+  } catch (error) {
+    throw new UsageError(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function parseChecked(argv) {
   const { values } = parseArgs({
     args: argv,
     strict: true,
@@ -58,7 +68,8 @@ export function parseBakeArgs(argv) {
   const width = Math.round(number(values.width, 'width', 64, 4096));
   return {
     word: values.word, out: values.out, font: values.font ?? DEFAULT_FONT,
-    weight: Math.round(number(values.weight, 'weight', 100, 900)), width, band,
+    // The bundled Funnel Display covers 300 to 700; another font may go wider.
+    weight: Math.round(values.font ? number(values.weight, 'weight', 100, 900) : number(values.weight, 'weight', 300, 700)), width, band,
     ink: number(values.ink, 'ink', 0.1, 0.98), grow: number(values.grow, 'grow', 0, 0.05),
     prefix: values.prefix, playwrightCore: values['playwright-core'],
   };

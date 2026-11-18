@@ -28,6 +28,10 @@ describe("quicksilver-bake arguments", () => {
     expect(() => parseBakeArgs(["--word", "a", "--out", "x", "--colour", "red"])).toThrow();
     expect(() => parseBakeArgs(["--word", "a", "--out", "x", "--prefix", "../up"])).toThrow(/--prefix/);
   });
+  test("the bundled font's weights only, unless another font is given", () => {
+    expect(() => parseBakeArgs(["--word", "a", "--out", "x", "--weight", "900"])).toThrow(/--weight/);
+    expect(parseBakeArgs(["--word", "a", "--out", "x", "--weight", "900", "--font", "f.woff2"]).weight).toBe(900);
+  });
   test("the bundled font is the OFL Funnel Display subset", () => {
     const hash = new Bun.CryptoHasher("sha256").update(readFileSync(DEFAULT_FONT)).digest("hex");
     expect(hash).toBe("a18ddd522b00cee8b8cfc1e24f7bd8b37e600af760879a5241f305824a1c04a7");

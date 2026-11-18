@@ -55,7 +55,6 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
   const signal = new AbortController();
   // A function, so a check after an await is not narrowed away by the one before it.
   const stopped = () => signal.signal.aborted;
-  const on = { signal: signal.signal, passive: true } as const;
   const systemDark = view.matchMedia("(prefers-color-scheme: dark)");
   const motion = view.matchMedia("(prefers-reduced-motion: reduce)");
   const dark = () => isDark(theme, systemDark.matches);
@@ -63,19 +62,6 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
   // The still picture holds the box. A site that server-renders one keeps it; otherwise mount adds it.
   let owned: HTMLElement | undefined;
   let still = anchor.querySelector("img");
-  const fillStill = () => {
-    if (!owned || !still) return;
-    owned.querySelector("source")?.remove();
-    if (theme === "auto") {
-      const source = doc.createElement("source");
-      source.media = "(prefers-color-scheme: dark)";
-      source.srcset = href(opts.stills.dark);
-      owned.prepend(source);
-      still.src = href(opts.stills.light);
-    } else {
-      still.src = href(theme === "dark" ? opts.stills.dark : opts.stills.light);
-    }
-  };
   if (!still) {
     owned = doc.createElement("picture");
     owned.className = "quicksilver-still";
@@ -83,26 +69,72 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
     still.alt = "";
     still.decoding = "async";
     owned.append(still);
-    fillStill();
     anchor.prepend(owned);
   }
+  const img = still;
+  // A server-rendered picture is put back exactly as it was on destroy.
+  const sources = [...(img.closest("picture")?.querySelectorAll("source") ?? [])];
+  const original = { src: img.getAttribute("src"), media: sources.map((source) => source.getAttribute("media")) };
+  const restore = () => {
+    if (original.src === null) img.removeAttribute("src");
+    else img.setAttribute("src", original.src);
+    sources.forEach((source, i) => {
+      const media = original.media[i];
+      if (media === null || media === undefined) source.removeAttribute("media");
+      else source.setAttribute("media", media);
+    });
+  };
+  const fillStill = () => {
+    if (owned) {
+      owned.querySelector("source")?.remove();
+      if (theme === "auto") {
+        const source = doc.createElement("source");
+        source.media = "(prefers-color-scheme: dark)";
+        source.srcset = href(opts.stills.dark);
+        owned.prepend(source);
+      }
+    } else {
+      restore();
+      if (theme === "auto") return;
+      // A forced theme: the page's own <source>s stand aside so the img shows that theme's still.
+      for (const source of sources) source.media = "not all";
+    }
+    img.src = href(theme === "auto" || theme === "light" ? opts.stills.light : opts.stills.dark);
+  };
+  fillStill();
+  const hadData = anchor.dataset["quicksilver"];
+  const hadClass = anchor.classList.contains("quicksilver");
+  anchor.classList.add("quicksilver");
   anchor.dataset["quicksilver"] = "still";
 
   // The element's own activation. A link answers Enter by itself; Space presses it too, as a button's does.
   element.addEventListener("click", (event) => opts.onActivate?.(event), { signal: signal.signal });
   if (anchor instanceof view.HTMLAnchorElement) {
     anchor.addEventListener("keydown", (event) => {
-      if (event.key !== " " || event.repeat) return;
+      if (event.key !== " " || event.repeat || event.defaultPrevented) return;
+      if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
       event.preventDefault();
       anchor.click();
     }, { signal: signal.signal });
   }
 
+  // `ready` settles once: "live" at the first drawn frame, "still" whenever the still takes over.
+  let settled = false, settle: (mode: Mode) => void = () => undefined;
+  const ready = new Promise<Mode>((done) => { settle = done; });
+  const conclude = (mode: Mode) => {
+    if (settled) return;
+    settled = true;
+    settle(mode);
+  };
+
   let canvas: HTMLCanvasElement | undefined;
   let renderer: Renderer | undefined;
   let frame = 0;
+  // Everything the live letters listen to; aborted the moment the still takes over.
+  const phase = new AbortController();
   const observers: { disconnect(): void }[] = [];
   const toStill = () => {
+    phase.abort();
     if (frame) view.cancelAnimationFrame(frame);
     frame = 0;
     for (const observer of observers.splice(0)) observer.disconnect();
@@ -111,13 +143,18 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
     canvas?.remove();
     canvas = undefined;
     if (!stopped()) anchor.dataset["quicksilver"] = "still";
+    conclude("still");
   };
+  const gone = () => phase.signal.aborted;
+  const on = { signal: phase.signal, passive: true } as const;
 
   const live = async (): Promise<Mode> => {
     const saveData = Boolean((view.navigator as { connection?: Connection }).connection?.saveData);
     if (chooseMode({ reducedMotion: motion.matches, saveData, webgl: "WebGLRenderingContext" in view }) === "still") return "still";
     // The field is fetched only as the element comes into reach.
     await new Promise<void>((near) => {
+      // The still taking over (destroy, reduced motion) ends the wait too.
+      phase.signal.addEventListener("abort", () => { near(); }, { once: true });
       const watch = new view.IntersectionObserver((entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
         watch.disconnect();
@@ -126,17 +163,24 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
       observers.push(watch);
       watch.observe(anchor);
     });
-    if (stopped()) return "still";
+    if (gone()) return "still";
     const image = new view.Image();
     image.crossOrigin = "anonymous";
     image.src = href(opts.field);
     await image.decode();
     const field = await view.createImageBitmap(image, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
-    if (stopped() || motion.matches) return "still";
+    if (gone() || motion.matches) {
+      field.close();
+      return "still";
+    }
     canvas = doc.createElement("canvas");
     canvas.className = "quicksilver-canvas";
     canvas.setAttribute("aria-hidden", "true");
+    // Placed over the still even without quicksilver.css, so it can never push the box.
+    canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
     renderer = createRenderer(canvas, field);
+    // The texture holds the field now.
+    field.close();
     if (!renderer) {
       canvas = undefined;
       return "still";
@@ -147,8 +191,6 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
     const now = () => view.performance.now() / 1000;
     let visible = false, shown = false, touched = -9, skip = false, over = 0;
     let aim: [number, number] = [0.5, 0.5], lean: [number, number, number] = [0.5, 0.5, 0], last: [number, number, number] = [9, 9, 0];
-    let resolve: (mode: Mode) => void = () => undefined;
-    const drawn = new Promise<Mode>((done) => { resolve = done; });
 
     const draw = () => {
       frame = 0;
@@ -163,7 +205,7 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
         if (!shown) {
           shown = true;
           anchor.dataset["quicksilver"] = "live";
-          resolve("live");
+          conclude("live");
         }
       }
       frame = view.requestAnimationFrame(draw);
@@ -179,7 +221,7 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
     // A move to a screen with another pixel ratio redraws at that ratio.
     const ratio = () => {
       const query = view.matchMedia(`(resolution: ${String(view.devicePixelRatio)}dppx)`);
-      query.addEventListener("change", () => { measure(); ratio(); }, { once: true, signal: signal.signal });
+      query.addEventListener("change", () => { measure(); ratio(); }, { once: true, signal: phase.signal });
     };
     ratio();
     const point = (event: PointerEvent, press: boolean) => {
@@ -209,17 +251,16 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
     observers.push(seen, sized);
     doc.addEventListener("visibilitychange", wake, on);
     systemDark.addEventListener("change", wake, on);
-    surface.addEventListener("webglcontextlost", () => { toStill(); resolve("still"); }, on);
+    surface.addEventListener("webglcontextlost", toStill, on);
     measure();
-    return drawn;
+    return "live";
   };
 
   // Reduced motion turned on later stops the live letters and shows the still.
-  motion.addEventListener("change", () => { if (motion.matches) toStill(); }, on);
+  motion.addEventListener("change", () => { if (motion.matches) toStill(); }, { signal: signal.signal });
 
-  const ready = live().catch(() => "still" as const).then((mode) => {
+  void live().catch(() => "still" as const).then((mode) => {
     if (mode === "still") toStill();
-    return mode;
   });
 
   return {
@@ -234,7 +275,10 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
       signal.abort();
       toStill();
       owned?.remove();
-      delete anchor.dataset["quicksilver"];
+      if (!owned) restore();
+      if (!hadClass) anchor.classList.remove("quicksilver");
+      if (hadData === undefined) delete anchor.dataset["quicksilver"];
+      else anchor.dataset["quicksilver"] = hadData;
     },
   };
 }

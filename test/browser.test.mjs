@@ -235,6 +235,29 @@ try {
     await tab.evaluate(() => { window.mountIt('#mark'); return window.mode; });
     assert.equal(await tab.evaluate(() => document.querySelectorAll('#mark img').length), 1);
     assert.deepEqual(await tab.locator('#mark').boundingBox(), before);
+    // A forced theme on a light system shows the dark still, and destroy puts the markup back exactly.
+    await tab.evaluate(() => window.handle.setTheme('dark'));
+    await tab.waitForFunction(() => /wordmark-dark\./u.test(document.querySelector('#mark img').currentSrc));
+    await tab.evaluate(() => window.handle.destroy());
+    assert.equal(await tab.evaluate(() => document.querySelector('#mark').outerHTML), markup);
+    await context.close();
+  });
+
+  await check('ready settles as "still" when destroyed before the letters draw', async () => {
+    const far = (top) => `<div style="height:${top}px"></div>${LINK}`;
+    const settle = (tab) => tab.evaluate(() => Promise.race([window.mode, new Promise((done) => { window.setTimeout(() => { done('hung'); }, 3000); })]));
+    // Far below: still waiting for the element to come near.
+    let { context, tab } = await open(page(far(5000)));
+    await tab.evaluate(() => { window.mountIt('#mark'); window.handle.destroy(); });
+    assert.equal(await settle(tab), 'still');
+    await context.close();
+    // Near but not on screen: the canvas is in, no frame is drawn yet.
+    ({ context, tab } = await open(page(far(1000))));
+    await tab.evaluate(() => { window.mountIt('#mark'); });
+    await tab.waitForFunction(() => document.querySelector('#mark canvas'));
+    await tab.evaluate(() => window.handle.destroy());
+    assert.equal(await settle(tab), 'still');
+    assert.equal(await tab.evaluate(() => document.querySelectorAll('canvas').length), 0);
     await context.close();
   });
 } finally {

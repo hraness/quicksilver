@@ -61,7 +61,8 @@ run time.
 | `wordmark.json` | Manifest: `aspectRatio`, `width`, `height`, `band`, file names, font hash, Chromium version |
 
 Options: `--font <woff2|ttf|otf>` (the default is the bundled Funnel Display,
-which all Hraness product sites use for headings), `--weight` (700),
+which all Hraness product sites use for headings), `--weight` (700; 300 to
+700 with the bundled font),
 `--width` (880 = twice the widest the wordmark is shown), `--band` (0.3, which
 gives a 10:3 box; raise it for a short word), `--ink` (0.9), `--grow`
 (0.004) and `--prefix` (`wordmark`). Re-baking deletes that prefix's older
@@ -88,6 +89,8 @@ the outline and SEO stay the same, and give the link its own accessible name.
 ```
 
 If the element has no `<img>`, `mount` adds a `<picture>` with both stills.
+`mount` adds the `quicksilver` class if it is missing; load the CSS so the
+element is the canvas's positioned box.
 
 ### 4. CSS
 
@@ -147,8 +150,17 @@ How it behaves:
   so the press lands on the element. `onActivate` never prevents or redirects
   the click: the link goes where its `href` says, and the button runs its own
   handler. On a link, Space also activates it, as it would a button.
-- `setTheme` follows a site's own theme toggle when `theme` is not "auto".
-  `destroy()` removes the canvas, listeners and anything `mount` added.
+- `setTheme` follows a site's own theme toggle. A forced "light" or "dark"
+  also switches the still, including one already in the page's HTML (its
+  `<source>`s stand aside until the theme goes back to "auto").
+- `ready` always settles: "live" at the first drawn frame, "still" whenever
+  the still stays or takes over, including on `destroy()`.
+- `destroy()` removes the canvas, listeners and anything `mount` added, and
+  puts a server-rendered picture, the `quicksilver` class and
+  `data-quicksilver` back as they were.
+- `mount` handles Space on a link (no modifiers, and not if a handler already
+  called `preventDefault`). When moving yaptake.com's own `wordmark()` to
+  this package, drop its Space handler so the link is not activated twice.
 
 ### 6. Analytics convention
 

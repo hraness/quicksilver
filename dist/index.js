@@ -96,18 +96,26 @@ function createRenderer(canvas, field, keep = false) {
   });
   if (!gl)
     return;
+  const fail = () => {
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+  };
+  const texels = field.width;
   const program = gl.createProgram();
   for (const [type, source] of [[gl.VERTEX_SHADER, VERTEX], [gl.FRAGMENT_SHADER, FRAGMENT]]) {
     const shader = gl.createShader(type);
-    if (!shader)
+    if (!shader) {
+      fail();
       return;
+    }
     gl.shaderSource(shader, source);
     gl.compileShader(shader);
     gl.attachShader(program, shader);
   }
   gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS))
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    fail();
     return;
+  }
   gl.useProgram(program);
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
@@ -135,7 +143,7 @@ function createRenderer(canvas, field, keep = false) {
         return;
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.uniform2f(R, canvas.width, canvas.height);
-      gl.uniform4f(B, box[0], box[1], box[2], field.width);
+      gl.uniform4f(B, box[0], box[1], box[2], texels);
       gl.uniform1f(T, time);
       gl.uniform3fv(P, pointer);
       gl.uniform3fv(W, rings);
@@ -218,26 +226,11 @@ function mount(anchor, opts) {
   let theme = opts.theme ?? "auto";
   const signal = new AbortController;
   const stopped = () => signal.signal.aborted;
-  const on = { signal: signal.signal, passive: true };
   const systemDark = view.matchMedia("(prefers-color-scheme: dark)");
   const motion = view.matchMedia("(prefers-reduced-motion: reduce)");
   const dark = () => isDark(theme, systemDark.matches);
   let owned;
   let still = anchor.querySelector("img");
-  const fillStill = () => {
-    if (!owned || !still)
-      return;
-    owned.querySelector("source")?.remove();
-    if (theme === "auto") {
-      const source = doc.createElement("source");
-      source.media = "(prefers-color-scheme: dark)";
-      source.srcset = href(opts.stills.dark);
-      owned.prepend(source);
-      still.src = href(opts.stills.light);
-    } else {
-      still.src = href(theme === "dark" ? opts.stills.dark : opts.stills.light);
-    }
-  };
   if (!still) {
     owned = doc.createElement("picture");
     owned.className = "quicksilver-still";
@@ -245,24 +238,77 @@ function mount(anchor, opts) {
     still.alt = "";
     still.decoding = "async";
     owned.append(still);
-    fillStill();
     anchor.prepend(owned);
   }
+  const img = still;
+  const sources = [...img.closest("picture")?.querySelectorAll("source") ?? []];
+  const original = { src: img.getAttribute("src"), media: sources.map((source) => source.getAttribute("media")) };
+  const restore = () => {
+    if (original.src === null)
+      img.removeAttribute("src");
+    else
+      img.setAttribute("src", original.src);
+    sources.forEach((source, i) => {
+      const media = original.media[i];
+      if (media === null || media === undefined)
+        source.removeAttribute("media");
+      else
+        source.setAttribute("media", media);
+    });
+  };
+  const fillStill = () => {
+    if (owned) {
+      owned.querySelector("source")?.remove();
+      if (theme === "auto") {
+        const source = doc.createElement("source");
+        source.media = "(prefers-color-scheme: dark)";
+        source.srcset = href(opts.stills.dark);
+        owned.prepend(source);
+      }
+    } else {
+      restore();
+      if (theme === "auto")
+        return;
+      for (const source of sources)
+        source.media = "not all";
+    }
+    img.src = href(theme === "auto" || theme === "light" ? opts.stills.light : opts.stills.dark);
+  };
+  fillStill();
+  const hadData = anchor.dataset["quicksilver"];
+  const hadClass = anchor.classList.contains("quicksilver");
+  anchor.classList.add("quicksilver");
   anchor.dataset["quicksilver"] = "still";
   element.addEventListener("click", (event) => opts.onActivate?.(event), { signal: signal.signal });
   if (anchor instanceof view.HTMLAnchorElement) {
     anchor.addEventListener("keydown", (event) => {
-      if (event.key !== " " || event.repeat)
+      if (event.key !== " " || event.repeat || event.defaultPrevented)
+        return;
+      if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
         return;
       event.preventDefault();
       anchor.click();
     }, { signal: signal.signal });
   }
+  let settled = false, settle = () => {
+    return;
+  };
+  const ready = new Promise((done) => {
+    settle = done;
+  });
+  const conclude = (mode) => {
+    if (settled)
+      return;
+    settled = true;
+    settle(mode);
+  };
   let canvas;
   let renderer;
   let frame = 0;
+  const phase = new AbortController;
   const observers = [];
   const toStill = () => {
+    phase.abort();
     if (frame)
       view.cancelAnimationFrame(frame);
     frame = 0;
@@ -274,12 +320,18 @@ function mount(anchor, opts) {
     canvas = undefined;
     if (!stopped())
       anchor.dataset["quicksilver"] = "still";
+    conclude("still");
   };
+  const gone = () => phase.signal.aborted;
+  const on = { signal: phase.signal, passive: true };
   const live = async () => {
     const saveData = Boolean(view.navigator.connection?.saveData);
     if (chooseMode({ reducedMotion: motion.matches, saveData, webgl: "WebGLRenderingContext" in view }) === "still")
       return "still";
     await new Promise((near) => {
+      phase.signal.addEventListener("abort", () => {
+        near();
+      }, { once: true });
       const watch = new view.IntersectionObserver((entries) => {
         if (!entries.some((entry) => entry.isIntersecting))
           return;
@@ -289,19 +341,23 @@ function mount(anchor, opts) {
       observers.push(watch);
       watch.observe(anchor);
     });
-    if (stopped())
+    if (gone())
       return "still";
     const image = new view.Image;
     image.crossOrigin = "anonymous";
     image.src = href(opts.field);
     await image.decode();
     const field = await view.createImageBitmap(image, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
-    if (stopped() || motion.matches)
+    if (gone() || motion.matches) {
+      field.close();
       return "still";
+    }
     canvas = doc.createElement("canvas");
     canvas.className = "quicksilver-canvas";
     canvas.setAttribute("aria-hidden", "true");
+    canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
     renderer = createRenderer(canvas, field);
+    field.close();
     if (!renderer) {
       canvas = undefined;
       return "still";
@@ -311,12 +367,6 @@ function mount(anchor, opts) {
     const now = () => view.performance.now() / 1000;
     let visible = false, shown = false, touched = -9, skip = false, over = 0;
     let aim = [0.5, 0.5], lean = [0.5, 0.5, 0], last = [9, 9, 0];
-    let resolve = () => {
-      return;
-    };
-    const drawn = new Promise((done) => {
-      resolve = done;
-    });
     const draw = () => {
       frame = 0;
       if (!visible || doc.hidden || !renderer)
@@ -330,7 +380,7 @@ function mount(anchor, opts) {
         if (!shown) {
           shown = true;
           anchor.dataset["quicksilver"] = "live";
-          resolve("live");
+          conclude("live");
         }
       }
       frame = view.requestAnimationFrame(draw);
@@ -349,7 +399,7 @@ function mount(anchor, opts) {
       query.addEventListener("change", () => {
         measure();
         ratio();
-      }, { once: true, signal: signal.signal });
+      }, { once: true, signal: phase.signal });
     };
     ratio();
     const point = (event, press) => {
@@ -383,21 +433,17 @@ function mount(anchor, opts) {
     observers.push(seen, sized);
     doc.addEventListener("visibilitychange", wake, on);
     systemDark.addEventListener("change", wake, on);
-    surface.addEventListener("webglcontextlost", () => {
-      toStill();
-      resolve("still");
-    }, on);
+    surface.addEventListener("webglcontextlost", toStill, on);
     measure();
-    return drawn;
+    return "live";
   };
   motion.addEventListener("change", () => {
     if (motion.matches)
       toStill();
-  }, on);
-  const ready = live().catch(() => "still").then((mode) => {
+  }, { signal: signal.signal });
+  live().catch(() => "still").then((mode) => {
     if (mode === "still")
       toStill();
-    return mode;
   });
   return {
     ready,
@@ -410,7 +456,14 @@ function mount(anchor, opts) {
       signal.abort();
       toStill();
       owned?.remove();
-      delete anchor.dataset["quicksilver"];
+      if (!owned)
+        restore();
+      if (!hadClass)
+        anchor.classList.remove("quicksilver");
+      if (hadData === undefined)
+        delete anchor.dataset["quicksilver"];
+      else
+        anchor.dataset["quicksilver"] = hadData;
     }
   };
 }
@@ -424,4 +477,4 @@ export {
   DEFAULTS
 };
 
-//# debugId=A7D0527CCD59FEBD64756E2164756E21
+//# debugId=F7E8FEE2982FD51E64756E2164756E21
