@@ -180,6 +180,30 @@ alongside its unchanged `download started`.
 - The focus ring is the element's own (`--quicksilver-focus`). In forced-colors
   mode the canvas is hidden and the still shows.
 
+## A 404 page
+
+Each Hraness product site's 404 page leads with "404" in quicksilver, as a link
+home. The sites share one bake, run as in step 2:
+
+```sh
+quicksilver-bake --word 404 --band 0.5 --prefix not-found --out public/quicksilver
+```
+
+The bake is deterministic, so every site serves the same four files:
+`not-found-field.5a840199.png`, `not-found-light.b59514ea.png`,
+`not-found-dark.149f2a4e.png` and `not-found.json`. Band 0.5 gives a 2:1 box
+(880 × 440). At the default 0.3, three glyphs fill only half its width.
+
+Follow the recipe above, with these differences:
+
+- The page answers at any address, including nested ones, so every file URL
+  starts with `/`.
+- The still is the first thing on the page, so don't give it `loading="lazy"`.
+- The picture of "404" is the link's only visible label, so the link's name
+  starts with it: `aria-label="404: go to the Sponge home page"` (WCAG 2.5.3,
+  label in name). Keep a plain text link to the home page as well.
+- Pass the manifest's band to `mount`: `band: 0.5`.
+
 ## Development
 
 ```sh
