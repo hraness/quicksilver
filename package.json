@@ -1,0 +1,80 @@
+{
+  "name": "@hraness/quicksilver",
+  "version": "1.0.0",
+  "description": "A word in liquid metal on a link or button: a tiny WebGL runtime with still-picture fallbacks, and a bake CLI for the distance field and stills.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "packageManager": "bun@1.3.14",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hraness/quicksilver.git"
+  },
+  "homepage": "https://github.com/hraness/quicksilver#readme",
+  "bugs": {
+    "url": "https://github.com/hraness/quicksilver/issues"
+  },
+  "keywords": [
+    "webgl",
+    "wordmark",
+    "liquid-metal",
+    "quicksilver"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./quicksilver.css": "./quicksilver.css",
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "quicksilver-bake": "./bin/quicksilver-bake.mjs"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.js.map",
+    "dist/*.d.ts",
+    "dist/bake-page.js",
+    "bin",
+    "fonts",
+    "src/*.ts",
+    "!src/*.test.ts",
+    "quicksilver.css",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bun run ./scripts/build.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test ./src ./test/unit",
+    "test:browser": "node ./test/browser.test.mjs",
+    "test:package": "bun run ./scripts/package-smoke.ts",
+    "size": "bun run ./scripts/size.ts",
+    "check:code": "bun run lint && bun run typecheck && bun run build && bun run test && bun run size && bun run test:package",
+    "check": "bun run check:code && bun run test:browser",
+    "prepack": "bun run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/bun": "^1.4.0",
+    "@types/node": "^24.10.0",
+    "eslint": "^9.39.2",
+    "playwright-core": "1.62.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.68.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
