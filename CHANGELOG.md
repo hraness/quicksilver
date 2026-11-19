@@ -10,7 +10,6 @@
   pointer wakes it, and the first live frame is the stills' moment. `SETTLE`
   exports the timing.
 - `setTheme` redraws a resting mark, as a resize does.
-- The every-other-frame idle drawing is gone; resting replaces it.
 
 ## 1.0.0
 

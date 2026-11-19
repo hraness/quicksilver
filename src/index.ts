@@ -192,20 +192,27 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
     anchor.append(surface);
 
     const now = () => view.performance.now() / 1000;
-    // `touched` is when the letters first drew or the pointer last acted on them (SETTLE). The swell keeps
-    // its own `clock`, which runs at its `speed` and stands still at rest. Woken from rest it picks up where
-    // it stopped, so a ring the pointer starts grows from nothing; the first frame is the stills' moment
-    // (lettering's time 3).
-    let visible = false, shown = false, touched = 0, before = 0, clock = 3, speed = 0, over = 0;
+    // `stirred` is when the letters first drew or the pointer last acted on them (SETTLE); `touched` is the
+    // pointer's last move or press. The swell keeps its own `clock`, which runs at its `speed` and stands
+    // still at rest. Woken from rest it picks up where it stopped, so a ring the pointer starts grows from
+    // nothing; the first frame is the stills' moment (lettering's time 3).
+    let visible = false, shown = false, stirred = 0, touched = -9, before = 0, clock = 3, speed = 0, skip = false, over = 0;
     let aim: [number, number] = [0.5, 0.5], lean: [number, number, number] = [0.5, 0.5, 0], last: [number, number, number] = [9, 9, 0];
 
     const draw = () => {
       frame = 0;
       if (!visible || doc.hidden || !renderer) return;
       const time = now();
-      if (!shown) touched = time;
+      // Left alone, the slow swell needs only every other frame; the pointer brings back all of them. A
+      // resting mark draws its one frame whatever woke it.
+      skip = !skip && shown && speed > 0 && time - touched > 2.5;
+      if (skip) {
+        frame = view.requestAnimationFrame(draw);
+        return;
+      }
+      if (!shown) stirred = time;
       if (!shown || speed === 0) before = time;
-      speed = pace(speed, time - touched, time - before);
+      speed = pace(speed, time - stirred, time - before);
       // A slow device or a pause off screen mid-swell never moves it more than a tenth of a second at once.
       clock += speed * Math.min(time - before, 0.1);
       before = time;
@@ -243,7 +250,7 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
       over = 1;
       aim = [x, y];
       const time = now();
-      touched = time;
+      touched = stirred = time;
       // A ring where the pointer has travelled a little way along the word, or wherever it presses. Rings
       // age on the swell's clock, as the shader reads both from one time.
       if (press || (Math.hypot(x - last[0], y - last[1]) > 0.05 && time - last[2] > 0.12)) {
@@ -257,7 +264,7 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
     // Leaving counts as the pointer's last act, so the dip under it eases out before the swell rests.
     element.addEventListener("pointerleave", () => {
       over = 0;
-      touched = now();
+      stirred = now();
       wake();
     }, on);
     // Drawn only while it is on the screen and the tab is shown.

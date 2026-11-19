@@ -234,12 +234,12 @@ try {
       const drawn = (await frames()) - from;
       assert(drawn <= 1, `${label}: still drawing (${drawn} frames in 700 ms)`);
     };
-    // CI's software GL can draw this box at under 10 frames a second, so "drawing" asks for 3 in half a second.
+    // CI's software GL can draw this box at under 10 frames a second, so "drawing" asks for 3 in 600 ms.
     const drawing = async (label) => {
       const from = await frames();
-      await tab.waitForTimeout(500);
+      await tab.waitForTimeout(600);
       const drawn = (await frames()) - from;
-      assert(drawn >= 3, `${label}: not drawing (${drawn} frames in 500 ms)`);
+      assert(drawn >= 3, `${label}: not drawing (${drawn} frames in 600 ms)`);
     };
     await drawing('the first seconds');
     // Motion that starts by itself stops within five seconds of the first frame (WCAG 2.2.2).

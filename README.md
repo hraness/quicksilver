@@ -150,10 +150,11 @@ How it behaves:
   pressing or leaving the letters starts it again, and it settles the same way.
   The swell keeps its own clock, so it picks up where it stopped. A resting mark
   draws one frame for a resize or `setTheme`.
-- **Cheap.** Drawing stops at rest, off screen and in hidden tabs. The canvas
-  follows the device pixel ratio (up to 2, within 400k pixels) and the
-  element's size through a `ResizeObserver`. If the WebGL context is lost, the
-  still comes back.
+- **Cheap.** Drawing stops at rest, off screen and in hidden tabs. Until it
+  rests, the swell left alone draws every other frame. The canvas follows the
+  device pixel ratio (up to 2, within 400k pixels) and the element's size
+  through a `ResizeObserver`. If the WebGL context is lost, the still comes
+  back.
 - **Never navigates.** The canvas is `aria-hidden` with `pointer-events: none`,
   so the press lands on the element. `onActivate` never prevents or redirects
   the click: the link goes where its `href` says, and the button runs its own

@@ -372,18 +372,23 @@ function mount(anchor, opts) {
     const surface = canvas, mark = renderer;
     anchor.append(surface);
     const now = () => view.performance.now() / 1000;
-    let visible = false, shown = false, touched = 0, before = 0, clock = 3, speed = 0, over = 0;
+    let visible = false, shown = false, stirred = 0, touched = -9, before = 0, clock = 3, speed = 0, skip = false, over = 0;
     let aim = [0.5, 0.5], lean = [0.5, 0.5, 0], last = [9, 9, 0];
     const draw = () => {
       frame = 0;
       if (!visible || doc.hidden || !renderer)
         return;
       const time = now();
+      skip = !skip && shown && speed > 0 && time - touched > 2.5;
+      if (skip) {
+        frame = view.requestAnimationFrame(draw);
+        return;
+      }
       if (!shown)
-        touched = time;
+        stirred = time;
       if (!shown || speed === 0)
         before = time;
-      speed = pace(speed, time - touched, time - before);
+      speed = pace(speed, time - stirred, time - before);
       clock += speed * Math.min(time - before, 0.1);
       before = time;
       const resting = speed === 0;
@@ -421,7 +426,7 @@ function mount(anchor, opts) {
       over = 1;
       aim = [x, y];
       const time = now();
-      touched = time;
+      touched = stirred = time;
       if (press || Math.hypot(x - last[0], y - last[1]) > 0.05 && time - last[2] > 0.12) {
         mark.ring(x, y, clock);
         last = [x, y, time];
@@ -436,7 +441,7 @@ function mount(anchor, opts) {
     }, on);
     element.addEventListener("pointerleave", () => {
       over = 0;
-      touched = now();
+      stirred = now();
       wake();
     }, on);
     const seen = new view.IntersectionObserver((entries) => {
@@ -495,4 +500,4 @@ export {
   DEFAULTS
 };
 
-//# debugId=17855E75FCA1491364756E2164756E21
+//# debugId=AB0E1353DD4E2C8464756E2164756E21
