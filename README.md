@@ -229,6 +229,8 @@ interception (no server is started), and checks that:
 - nothing overflows at 320 px
 - the click and keyboard reach the element and its navigation, on a link and on a button
 - drawing pauses off screen
+- the swell rests within five seconds, and the pointer, `setTheme` or a resize
+  wakes a resting mark
 - `setTheme` and `destroy` work
 
 `dist/` is committed and CI fails if a build changes it. A version bump merged

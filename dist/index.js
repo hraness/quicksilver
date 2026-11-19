@@ -380,7 +380,9 @@ function mount(anchor, opts) {
         return;
       const time = now();
       if (!shown)
-        touched = before = time;
+        touched = time;
+      if (!shown || speed === 0)
+        before = time;
       speed = pace(speed, time - touched, time - before);
       clock += speed * Math.min(time - before, 0.1);
       before = time;
@@ -493,4 +495,4 @@ export {
   DEFAULTS
 };
 
-//# debugId=3E4625A56A171E8164756E2164756E21
+//# debugId=17855E75FCA1491364756E2164756E21

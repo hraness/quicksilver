@@ -6,8 +6,9 @@
   the pointer last moves over, presses or leaves them, then slows to a stop
   within a second, so motion that starts by itself ends within five seconds
   (WCAG 2.2.2, Pause, Stop, Hide) without a pause button. At rest nothing is
-  drawn. The swell keeps its own clock, so waking never jumps it, and the
-  first live frame is the stills' moment. `SETTLE` exports the timing.
+  drawn. The swell keeps its own clock and picks up where it stopped when the
+  pointer wakes it, and the first live frame is the stills' moment. `SETTLE`
+  exports the timing.
 - `setTheme` redraws a resting mark, as a resize does.
 - The every-other-frame idle drawing is gone; resting replaces it.
 

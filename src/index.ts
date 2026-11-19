@@ -193,8 +193,9 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
 
     const now = () => view.performance.now() / 1000;
     // `touched` is when the letters first drew or the pointer last acted on them (SETTLE). The swell keeps
-    // its own `clock`, which runs at its `speed` and stands still at rest, so waking moves it a tenth of a
-    // second at most, and the first frame is the stills' moment (lettering's time 3).
+    // its own `clock`, which runs at its `speed` and stands still at rest. Woken from rest it picks up where
+    // it stopped, so a ring the pointer starts grows from nothing; the first frame is the stills' moment
+    // (lettering's time 3).
     let visible = false, shown = false, touched = 0, before = 0, clock = 3, speed = 0, over = 0;
     let aim: [number, number] = [0.5, 0.5], lean: [number, number, number] = [0.5, 0.5, 0], last: [number, number, number] = [9, 9, 0];
 
@@ -202,9 +203,10 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
       frame = 0;
       if (!visible || doc.hidden || !renderer) return;
       const time = now();
-      if (!shown) touched = before = time;
+      if (!shown) touched = time;
+      if (!shown || speed === 0) before = time;
       speed = pace(speed, time - touched, time - before);
-      // A slow device or a long pause never moves the swell more than a tenth of a second at once.
+      // A slow device or a pause off screen mid-swell never moves it more than a tenth of a second at once.
       clock += speed * Math.min(time - before, 0.1);
       before = time;
       const resting = speed === 0;

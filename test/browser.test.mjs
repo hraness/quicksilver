@@ -216,9 +216,14 @@ try {
   });
 
   await check('the swell rests within five seconds; the pointer, a theme or a resize wakes it', async () => {
+    // Counts frames, and records the time each draw gives the shader's T uniform.
     const { context, tab, errors } = await open(page(LINK, `
       window.frames = 0; const raf = window.requestAnimationFrame.bind(window);
-      window.requestAnimationFrame = (callback) => raf((t) => { window.frames++; callback(t); });`));
+      window.requestAnimationFrame = (callback) => raf((t) => { window.frames++; callback(t); });
+      window.times = []; const named = new WeakSet(), gl = WebGLRenderingContext.prototype;
+      const locate = gl.getUniformLocation, set = gl.uniform1f;
+      gl.getUniformLocation = function (program, name) { const at = locate.call(this, program, name); if (name === 'T' && at) named.add(at); return at; };
+      gl.uniform1f = function (at, value) { if (at && named.has(at)) window.times.push(value); return set.call(this, at, value); };`));
     assert.equal(await tab.evaluate(() => { window.mountIt('#mark'); return window.mode; }), 'live');
     const started = Date.now();
     const frames = () => tab.evaluate(() => window.frames);
@@ -258,10 +263,15 @@ try {
     assert((await inked(tab, '#mark', [255, 255, 255])) > 0.08, 'the resized canvas is blank');
     await quiet('after the resize');
 
+    // Woken from rest, the swell picks up exactly where it stopped, so the pointer's first ring grows from nothing.
+    const resting = await tab.evaluate(() => [window.times.length, window.times.at(-1)]);
     const box = await tab.locator('#mark').boundingBox();
     await tab.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2);
     await tab.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2, { steps: 8 });
     await drawing('after the pointer moved');
+    const woken = await tab.evaluate((from) => window.times.slice(from), resting[0]);
+    assert.equal(woken[0], resting[1], 'waking from rest moved the swell');
+    assert(woken.at(-1) > resting[1], 'the woken swell does not move');
     await tab.waitForTimeout(5000);
     await quiet('5 s after the pointer stopped');
 
