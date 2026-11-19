@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULTS, canvasSize, checkOptions, chooseMode, edgeFor, fieldPoint, isDark, lettering } from "./options.js";
+import { DEFAULTS, SETTLE, canvasSize, checkOptions, chooseMode, edgeFor, fieldPoint, isDark, lettering, pace } from "./options.js";
 
 describe("theme and finish", () => {
   test("auto follows the system; light and dark are forced", () => {
@@ -25,6 +25,39 @@ describe("still or live", () => {
     expect(chooseMode({ ...live, reducedMotion: true })).toBe("still");
     expect(chooseMode({ ...live, saveData: true })).toBe("still");
     expect(chooseMode({ ...live, webgl: false })).toBe("still");
+  });
+});
+
+describe("the swell comes to rest", () => {
+  // Frames at `fps` from the letters' first frame (or the pointer's last act) until the pace reaches 0.
+  const restsAt = (fps: number) => {
+    let speed = 1, time = 0;
+    const step = 1 / fps;
+    while (speed > 0) {
+      time += step;
+      speed = pace(speed, time, step);
+      if (time < SETTLE.calm) expect(speed).toBe(1);
+      if (time > 60) throw new Error("never rests");
+    }
+    return time;
+  };
+  test("within five seconds of starting by itself, at any frame rate (WCAG 2.2.2)", () => {
+    for (const fps of [144, 120, 60, 30, 10, 4]) {
+      const rest = restsAt(fps);
+      expect(rest).toBeGreaterThanOrEqual(SETTLE.calm);
+      expect(rest).toBeLessThanOrEqual(5);
+    }
+  });
+  test("slowing over a second rather than at once", () => {
+    expect(pace(1, SETTLE.calm + 0.5, 0.5)).toBeCloseTo(0.5);
+    expect(pace(0.5, SETTLE.calm + 0.75, 0.25)).toBeCloseTo(0.25);
+  });
+  test("a long pause off screen or in a hidden tab ends it on the next frame", () => {
+    expect(pace(1, 9, 8)).toBe(0);
+  });
+  test("the pointer brings full pace back at once, and rest stays rest", () => {
+    expect(pace(0, 0, 30)).toBe(1);
+    expect(pace(0, 30, 1 / 60)).toBe(0);
   });
 });
 

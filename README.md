@@ -5,7 +5,8 @@ A word in liquid metal on a link or button: the "yaptake" wordmark that closes
 
 - **Runtime** (`mount`): vanilla TypeScript, ESM, no dependencies, about 5 KB
   gzipped. It draws the live letters over the element's still picture, leaning
-  toward the pointer and ringing where it crosses or presses them.
+  toward the pointer and ringing where it crosses or presses them. Their swell
+  comes to rest within five seconds and the pointer wakes it.
 - **CSS** (`quicksilver.css`, under 1 KB gzipped): the reserved box, focus ring
   hook and still/canvas swap.
 - **Bake CLI** (`quicksilver-bake`): sets your word in Funnel Display (or any
@@ -25,13 +26,13 @@ The package ships as an immutable GitHub Release tarball, never npm, like
 without a token.
 
 ```json
-"@hraness/quicksilver": "https://github.com/hraness/quicksilver/releases/download/v1.0.0/hraness-quicksilver-1.0.0.tgz"
+"@hraness/quicksilver": "https://github.com/hraness/quicksilver/releases/download/v1.1.0/hraness-quicksilver-1.1.0.tgz"
 ```
 
-- **bun:** `bun add @hraness/quicksilver@https://github.com/hraness/quicksilver/releases/download/v1.0.0/hraness-quicksilver-1.0.0.tgz`
+- **bun:** `bun add @hraness/quicksilver@https://github.com/hraness/quicksilver/releases/download/v1.1.0/hraness-quicksilver-1.1.0.tgz`
   (use `name@url`, since a bare URL can fail to resolve). `bun.lock` records the
   tarball's `sha512` integrity, and CI runs `bun install --frozen-lockfile`.
-- **npm:** `npm install https://github.com/hraness/quicksilver/releases/download/v1.0.0/hraness-quicksilver-1.0.0.tgz`.
+- **npm:** `npm install https://github.com/hraness/quicksilver/releases/download/v1.1.0/hraness-quicksilver-1.1.0.tgz`.
   `package-lock.json` records `resolved` and `integrity`, and CI runs `npm ci`.
 - Each release body lists the tarball's sha256, and `SHA256SUMS` is attached as
   an asset. To check by hand: `curl -sL <url> | shasum -a 256`.
@@ -40,7 +41,7 @@ without a token.
 
 ```sh
 npx -y playwright-core@1.62.0 install chromium      # Playwright's own Chromium, once per machine
-npx -y -p playwright-core@1.62.0 -p https://github.com/hraness/quicksilver/releases/download/v1.0.0/hraness-quicksilver-1.0.0.tgz \
+npx -y -p playwright-core@1.62.0 -p https://github.com/hraness/quicksilver/releases/download/v1.1.0/hraness-quicksilver-1.1.0.tgz \
   quicksilver-bake --word sponge --out public/assets/quicksilver
 ```
 
@@ -142,10 +143,18 @@ How it behaves:
   add no canvas. If reduced motion turns on later, the live letters stop.
 - **Lazy.** The field is fetched only when the element is within 800 px of the
   screen.
-- **Cheap.** Drawing stops off screen and in hidden tabs. Left alone, the slow
-  swell draws every other frame. The canvas follows the device pixel ratio (up
-  to 2, within 400k pixels) and the element's size through a `ResizeObserver`.
-  If the WebGL context is lost, the still comes back.
+- **Comes to rest.** Motion that starts by itself stops within five seconds
+  ([WCAG 2.2.2](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html)),
+  so no pause button is needed. The swell runs for 3.5 s after the letters
+  first draw, then slows to a stop within a second (`SETTLE`). Moving over,
+  pressing or leaving the letters starts it again, and it settles the same way.
+  The swell keeps its own clock, so it picks up where it stopped. A resting mark
+  draws one frame for a resize or `setTheme`.
+- **Cheap.** Drawing stops at rest, off screen and in hidden tabs. Until it
+  rests, the swell left alone draws every other frame. The canvas follows the
+  device pixel ratio (up to 2, within 400k pixels) and the element's size
+  through a `ResizeObserver`. If the WebGL context is lost, the still comes
+  back.
 - **Never navigates.** The canvas is `aria-hidden` with `pointer-events: none`,
   so the press lands on the element. `onActivate` never prevents or redirects
   the click: the link goes where its `href` says, and the button runs its own
@@ -221,6 +230,8 @@ interception (no server is started), and checks that:
 - nothing overflows at 320 px
 - the click and keyboard reach the element and its navigation, on a link and on a button
 - drawing pauses off screen
+- the swell rests within five seconds, and the pointer, `setTheme` or a resize
+  wakes a resting mark
 - `setTheme` and `destroy` work
 
 `dist/` is committed and CI fails if a build changes it. A version bump merged

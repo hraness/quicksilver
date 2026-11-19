@@ -1,6 +1,6 @@
 import { type Finish, type Mode, type Theme } from "./options.js";
 export type { Finish, Mode, Theme } from "./options.js";
-export { chooseMode, canvasSize, edgeFor, isDark, lettering, DEFAULTS } from "./options.js";
+export { chooseMode, canvasSize, edgeFor, isDark, lettering, DEFAULTS, SETTLE } from "./options.js";
 export type MountOptions = {
     /** The distance field PNG from `quicksilver-bake` (its manifest's `field`). */
     field: URL | string;
