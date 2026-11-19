@@ -2,17 +2,18 @@
  * @hraness/quicksilver: a word in liquid metal on a link or button. `mount` keeps the baked still
  * picture in the element's reserved box and, where motion and WebGL are welcome, draws the live
  * letters over it once the element comes near the screen. The letters lean toward the pointer and
- * ring where it crosses or presses them. The element keeps its own click and keyboard behaviour:
+ * ring where it crosses or presses them, and their swell comes to rest within five seconds of starting
+ * or of the pointer's last act (SETTLE). The element keeps its own click and keyboard behaviour:
  * this package never navigates, prevents a click or sends anything.
  */
 import { createRenderer, type Renderer } from "./shader.js";
 import {
-  DEFAULTS, canvasSize, checkOptions, chooseMode, edgeFor, fieldPoint, isDark, lettering,
+  DEFAULTS, canvasSize, checkOptions, chooseMode, edgeFor, fieldPoint, isDark, lettering, pace,
   type Finish, type Mode, type Theme,
 } from "./options.js";
 
 export type { Finish, Mode, Theme } from "./options.js";
-export { chooseMode, canvasSize, edgeFor, isDark, lettering, DEFAULTS } from "./options.js";
+export { chooseMode, canvasSize, edgeFor, isDark, lettering, DEFAULTS, SETTLE } from "./options.js";
 
 export type MountOptions = {
   /** The distance field PNG from `quicksilver-bake` (its manifest's `field`). */
@@ -130,6 +131,8 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
   let canvas: HTMLCanvasElement | undefined;
   let renderer: Renderer | undefined;
   let frame = 0;
+  // Draws one more frame of the live letters, even at rest; a no-op once the still has taken over.
+  let redraw: () => void = () => undefined;
   // Everything the live letters listen to; aborted the moment the still takes over.
   const phase = new AbortController();
   const observers: { disconnect(): void }[] = [];
@@ -189,30 +192,39 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
     anchor.append(surface);
 
     const now = () => view.performance.now() / 1000;
-    let visible = false, shown = false, touched = -9, skip = false, over = 0;
+    // `touched` is when the letters first drew or the pointer last acted on them (SETTLE). The swell keeps
+    // its own `clock`, which runs at its `speed` and stands still at rest, so waking moves it a tenth of a
+    // second at most, and the first frame is the stills' moment (lettering's time 3).
+    let visible = false, shown = false, touched = 0, before = 0, clock = 3, speed = 0, over = 0;
     let aim: [number, number] = [0.5, 0.5], lean: [number, number, number] = [0.5, 0.5, 0], last: [number, number, number] = [9, 9, 0];
 
     const draw = () => {
       frame = 0;
       if (!visible || doc.hidden || !renderer) return;
       const time = now();
-      // Left alone, the slow swell needs only every other frame; the pointer brings back all of them.
-      skip = !skip && shown && time - touched > 2.5;
-      if (!skip) {
-        lean = [lean[0] + (aim[0] - lean[0]) * 0.08, lean[1] + (aim[1] - lean[1]) * 0.08, lean[2] + (over - lean[2]) * 0.06];
-        const isDarkNow = dark();
-        mark.draw(lettering(surface.width, isDarkNow, edgeFor(finish, isDarkNow), time, lean, band));
-        if (!shown) {
-          shown = true;
-          anchor.dataset["quicksilver"] = "live";
-          conclude("live");
-        }
+      if (!shown) touched = before = time;
+      speed = pace(speed, time - touched, time - before);
+      // A slow device or a long pause never moves the swell more than a tenth of a second at once.
+      clock += speed * Math.min(time - before, 0.1);
+      before = time;
+      const resting = speed === 0;
+      lean = resting
+        ? [aim[0], aim[1], over]
+        : [lean[0] + (aim[0] - lean[0]) * 0.08, lean[1] + (aim[1] - lean[1]) * 0.08, lean[2] + (over - lean[2]) * 0.06];
+      const isDarkNow = dark();
+      mark.draw(lettering(surface.width, isDarkNow, edgeFor(finish, isDarkNow), clock, lean, band));
+      if (!shown) {
+        shown = true;
+        anchor.dataset["quicksilver"] = "live";
+        conclude("live");
       }
-      frame = view.requestAnimationFrame(draw);
+      // At rest the canvas keeps this frame and nothing is drawn until the pointer, a resize or a theme wakes it.
+      if (!resting) frame = view.requestAnimationFrame(draw);
     };
     const wake = () => {
       if (!frame && renderer) frame = view.requestAnimationFrame(draw);
     };
+    redraw = wake;
     const measure = () => {
       const { width, height } = surface.getBoundingClientRect();
       [surface.width, surface.height] = canvasSize(width, height, view.devicePixelRatio);
@@ -230,16 +242,22 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
       aim = [x, y];
       const time = now();
       touched = time;
-      // A ring where the pointer has travelled a little way along the word, or wherever it presses.
+      // A ring where the pointer has travelled a little way along the word, or wherever it presses. Rings
+      // age on the swell's clock, as the shader reads both from one time.
       if (press || (Math.hypot(x - last[0], y - last[1]) > 0.05 && time - last[2] > 0.12)) {
-        mark.ring(x, y, time);
+        mark.ring(x, y, clock);
         last = [x, y, time];
       }
       wake();
     };
     element.addEventListener("pointermove", (event) => { point(event, false); }, on);
     element.addEventListener("pointerdown", (event) => { point(event, true); }, on);
-    element.addEventListener("pointerleave", () => { over = 0; }, on);
+    // Leaving counts as the pointer's last act, so the dip under it eases out before the swell rests.
+    element.addEventListener("pointerleave", () => {
+      over = 0;
+      touched = now();
+      wake();
+    }, on);
     // Drawn only while it is on the screen and the tab is shown.
     const seen = new view.IntersectionObserver((entries) => {
       visible = entries.some((entry) => entry.isIntersecting);
@@ -268,8 +286,9 @@ export function mount(anchor: HTMLAnchorElement | HTMLButtonElement, opts: Mount
     setTheme(next) {
       checkOptions({ field: opts.field, stills: opts.stills, theme: next });
       theme = next;
-      // The live loop reads the theme on its next frame.
       fillStill();
+      // The live letters take the theme on their next frame, which a resting swell has to be woken for.
+      redraw();
     },
     destroy() {
       signal.abort();
