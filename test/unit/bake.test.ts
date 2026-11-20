@@ -84,7 +84,8 @@ describe("browser custody", () => {
   });
   test("the replaced default is exactly what the pinned playwright-core passes", () => {
     const bundle = readFileSync(join(import.meta.dir, "../../node_modules/playwright-core/lib/coreBundle.js"), "utf8");
-    const block = /disabledFeatures = \[([\s\S]*?)\];/u.exec(bundle)?.[1] ?? "";
+    const block = /disabledFeatures = \[([\s\S]*?)\]\.filter\(Boolean\)/u.exec(bundle)?.[1];
+    if (!block) throw new Error("Missing pinned Chromium disabledFeatures declaration");
     const names = [...block.matchAll(/^\s*"([A-Za-z0-9]+)"/gmu)].map((match) => match[1]);
     expect(names).toEqual(PLAYWRIGHT_DISABLED);
   });

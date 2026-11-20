@@ -90,6 +90,20 @@ const inked = async (tab, selector, background) => {
 };
 
 try {
+  await check('Chromium received one merged disabled-feature switch and muted audio', async () => {
+    const session = await browser.newBrowserCDPSession();
+    try {
+      const { arguments: argv } = await session.send('Browser.getBrowserCommandLine');
+      const disabled = [...new Set([...playwright.defaults, 'PaintHolding', 'MacAppCodeSignClone'])];
+      assert.deepEqual(argv.filter((arg) => arg.startsWith('--disable-features=')), [
+        `--disable-features=${disabled.join(',')}`,
+      ]);
+      assert(argv.includes('--mute-audio'));
+    } finally {
+      await session.detach();
+    }
+  });
+
   await check('draws the live letters: non-blank canvas pixels, still hidden, box unchanged', async () => {
     const { context, tab, errors } = await open(page(LINK));
     const before = await tab.locator('#mark').boundingBox();

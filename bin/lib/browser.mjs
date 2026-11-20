@@ -32,7 +32,6 @@ export const PLAYWRIGHT_DISABLED = [
   'PreconnectToSearch',
   'msForceBrowserSignIn',
   'msEdgeUpdateLaunchServicesPreferredVersion',
-  'SkipListAccountsWithoutGaiaCookies',
 ];
 
 /** Launch options: muted, and one --disable-features switch carrying PaintHolding and MacAppCodeSignClone. */
