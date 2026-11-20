@@ -182,6 +182,10 @@ function edgeFor(finish, dark) {
 function chooseMode({ reducedMotion, saveData, webgl }) {
   return reducedMotion || saveData || !webgl ? "still" : "live";
 }
+var SETTLE = { calm: 3.5, fall: 1 };
+function pace(previous, since, elapsed) {
+  return since < SETTLE.calm ? 1 : Math.max(0, previous - elapsed / SETTLE.fall);
+}
 function canvasSize(width, height, ratio, budget = DEFAULTS.budget) {
   const scale = Math.min(ratio > 0 ? ratio : 1, 2, Math.sqrt(budget / Math.max(width * height, 1)));
   return [Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale))];
@@ -305,6 +309,9 @@ function mount(anchor, opts) {
   let canvas;
   let renderer;
   let frame = 0;
+  let redraw = () => {
+    return;
+  };
   const phase = new AbortController;
   const observers = [];
   const toStill = () => {
@@ -365,30 +372,42 @@ function mount(anchor, opts) {
     const surface = canvas, mark = renderer;
     anchor.append(surface);
     const now = () => view.performance.now() / 1000;
-    let visible = false, shown = false, touched = -9, skip = false, over = 0;
+    let visible = false, shown = false, stirred = 0, touched = -9, before = 0, clock = 3, speed = 0, skip = false, over = 0;
     let aim = [0.5, 0.5], lean = [0.5, 0.5, 0], last = [9, 9, 0];
     const draw = () => {
       frame = 0;
       if (!visible || doc.hidden || !renderer)
         return;
       const time = now();
-      skip = !skip && shown && time - touched > 2.5;
-      if (!skip) {
-        lean = [lean[0] + (aim[0] - lean[0]) * 0.08, lean[1] + (aim[1] - lean[1]) * 0.08, lean[2] + (over - lean[2]) * 0.06];
-        const isDarkNow = dark();
-        mark.draw(lettering(surface.width, isDarkNow, edgeFor(finish, isDarkNow), time, lean, band));
-        if (!shown) {
-          shown = true;
-          anchor.dataset["quicksilver"] = "live";
-          conclude("live");
-        }
+      skip = !skip && shown && speed > 0 && time - touched > 2.5;
+      if (skip) {
+        frame = view.requestAnimationFrame(draw);
+        return;
       }
-      frame = view.requestAnimationFrame(draw);
+      if (!shown)
+        stirred = time;
+      if (!shown || speed === 0)
+        before = time;
+      speed = pace(speed, time - stirred, time - before);
+      clock += speed * Math.min(time - before, 0.1);
+      before = time;
+      const resting = speed === 0;
+      lean = resting ? [aim[0], aim[1], over] : [lean[0] + (aim[0] - lean[0]) * 0.08, lean[1] + (aim[1] - lean[1]) * 0.08, lean[2] + (over - lean[2]) * 0.06];
+      const isDarkNow = dark();
+      mark.draw(lettering(surface.width, isDarkNow, edgeFor(finish, isDarkNow), clock, lean, band));
+      if (!shown) {
+        shown = true;
+        anchor.dataset["quicksilver"] = "live";
+        conclude("live");
+      }
+      if (!resting)
+        frame = view.requestAnimationFrame(draw);
     };
     const wake = () => {
       if (!frame && renderer)
         frame = view.requestAnimationFrame(draw);
     };
+    redraw = wake;
     const measure = () => {
       const { width, height } = surface.getBoundingClientRect();
       [surface.width, surface.height] = canvasSize(width, height, view.devicePixelRatio);
@@ -407,9 +426,9 @@ function mount(anchor, opts) {
       over = 1;
       aim = [x, y];
       const time = now();
-      touched = time;
+      touched = stirred = time;
       if (press || Math.hypot(x - last[0], y - last[1]) > 0.05 && time - last[2] > 0.12) {
-        mark.ring(x, y, time);
+        mark.ring(x, y, clock);
         last = [x, y, time];
       }
       wake();
@@ -422,6 +441,8 @@ function mount(anchor, opts) {
     }, on);
     element.addEventListener("pointerleave", () => {
       over = 0;
+      stirred = now();
+      wake();
     }, on);
     const seen = new view.IntersectionObserver((entries) => {
       visible = entries.some((entry) => entry.isIntersecting);
@@ -451,6 +472,7 @@ function mount(anchor, opts) {
       checkOptions({ field: opts.field, stills: opts.stills, theme: next });
       theme = next;
       fillStill();
+      redraw();
     },
     destroy() {
       signal.abort();
@@ -474,7 +496,8 @@ export {
   edgeFor,
   chooseMode,
   canvasSize,
+  SETTLE,
   DEFAULTS
 };
 
-//# debugId=F7E8FEE2982FD51E64756E2164756E21
+//# debugId=AB0E1353DD4E2C8464756E2164756E21

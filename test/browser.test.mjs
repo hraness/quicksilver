@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The wordmark in a real browser: bakes "yaptake" with quicksilver-bake, mounts it on a page served
 // by request interception (no server is started), and checks that it draws, falls back, fits at
-// 320 px, pauses off screen and leaves the click to the element. Runs in Playwright's provisioned
+// 320 px, pauses off screen, comes to rest and leaves the click to the element. Runs in Playwright's provisioned
 // Chromium; locally under host-run --lane=browser. Writes pictures to $QUICKSILVER_EVIDENCE if set.
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -212,6 +212,75 @@ try {
     await tab.evaluate(() => window.scrollTo(0, 0));
     await tab.waitForTimeout(400);
     assert((await tab.evaluate(() => window.frames)) - settled > 3, 'did not resume on screen');
+    await context.close();
+  });
+
+  await check('the swell rests within five seconds; the pointer, a theme or a resize wakes it', async () => {
+    // Counts frames, and records the time each draw gives the shader's T uniform.
+    const { context, tab, errors } = await open(page(LINK, `
+      window.frames = 0; const raf = window.requestAnimationFrame.bind(window);
+      window.requestAnimationFrame = (callback) => raf((t) => { window.frames++; callback(t); });
+      window.times = []; const named = new WeakSet(), gl = WebGLRenderingContext.prototype;
+      const locate = gl.getUniformLocation, set = gl.uniform1f;
+      gl.getUniformLocation = function (program, name) { const at = locate.call(this, program, name); if (name === 'T' && at) named.add(at); return at; };
+      gl.uniform1f = function (at, value) { if (at && named.has(at)) window.times.push(value); return set.call(this, at, value); };`));
+    assert.equal(await tab.evaluate(() => { window.mountIt('#mark'); return window.mode; }), 'live');
+    const started = Date.now();
+    const frames = () => tab.evaluate(() => window.frames);
+    const shot = () => tab.locator('#mark').screenshot();
+    const quiet = async (label) => {
+      const from = await frames();
+      await tab.waitForTimeout(700);
+      const drawn = (await frames()) - from;
+      assert(drawn <= 1, `${label}: still drawing (${drawn} frames in 700 ms)`);
+    };
+    // CI's software GL can draw this box at under 10 frames a second, so "drawing" asks for 3 in 600 ms.
+    const drawing = async (label) => {
+      const from = await frames();
+      await tab.waitForTimeout(600);
+      const drawn = (await frames()) - from;
+      assert(drawn >= 3, `${label}: not drawing (${drawn} frames in 600 ms)`);
+    };
+    await drawing('the first seconds');
+    // Motion that starts by itself stops within five seconds of the first frame (WCAG 2.2.2).
+    await tab.waitForTimeout(Math.max(0, 5000 - (Date.now() - started)));
+    await quiet('5 s after it started');
+    const rest = await shot();
+    await tab.waitForTimeout(500);
+    assert.equal(Buffer.compare(rest, await shot()), 0, 'the resting letters still change');
+    assert((await inked(tab, '#mark', [255, 255, 255])) > 0.08, 'the resting canvas is blank');
+
+    // At rest, a theme or a resize draws the letters once more and rests again (the pointer is still away).
+    const light = await shot();
+    let from = await frames();
+    await tab.evaluate(() => window.handle.setTheme('dark'));
+    await tab.waitForTimeout(300);
+    assert.notEqual(Buffer.compare(light, await shot()), 0, 'a resting mark ignored setTheme');
+    assert((await frames()) - from >= 1, 'setTheme drew nothing');
+    await quiet('after setTheme');
+    await tab.evaluate(() => window.handle.setTheme('auto'));
+    from = await frames();
+    await tab.setViewportSize({ width: 600, height: 700 });
+    await tab.waitForTimeout(300);
+    assert((await frames()) - from >= 1, 'the resize drew nothing');
+    assert((await inked(tab, '#mark', [255, 255, 255])) > 0.08, 'the resized canvas is blank');
+    await quiet('after the resize');
+
+    // Woken from rest, the swell picks up exactly where it stopped, so the pointer's first ring grows from nothing.
+    const resting = await tab.evaluate(() => [window.times.length, window.times.at(-1)]);
+    const box = await tab.locator('#mark').boundingBox();
+    await tab.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2);
+    await tab.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2, { steps: 8 });
+    await drawing('after the pointer moved');
+    const woken = await tab.evaluate((from) => window.times.slice(from), resting[0]);
+    assert.equal(woken[0], resting[1], 'waking from rest moved the swell');
+    assert(woken.at(-1) > resting[1], 'the woken swell does not move');
+    await tab.waitForTimeout(5000);
+    await quiet('5 s after the pointer stopped');
+
+    await tab.mouse.move(2, 2);
+    await drawing('after the pointer left');
+    assert.deepEqual(errors, []);
     await context.close();
   });
 
