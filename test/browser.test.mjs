@@ -52,7 +52,7 @@ const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png
 
 const playwright = loadPlaywright();
 const browser = await launch(playwright);
-console.log(`browser ${browser.version()} at ${playwright.chromium.executablePath()}`);
+console.log(`browser ${browser.version()} at ${playwright.driver.chromium.executablePath()}`);
 const open = async (html, options = {}) => {
   const context = await browser.newContext({ viewport: { width: 1024, height: 700 }, deviceScaleFactor: 2, ...options });
   await context.route(`${ORIGIN}/**`, async (route) => {

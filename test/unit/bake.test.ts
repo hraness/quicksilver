@@ -73,7 +73,7 @@ describe("distance field", () => {
 });
 
 describe("browser custody", () => {
-  test("one --disable-features switch that keeps Playwright 1.62's list and adds ours", () => {
+  test("one --disable-features switch that keeps the pinned Playwright defaults and adds ours", () => {
     const options = launchOptions();
     const switches = options.args.filter((arg: string) => arg.startsWith("--disable-features="));
     expect(switches).toHaveLength(1);
