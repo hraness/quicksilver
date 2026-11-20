@@ -1,6 +1,6 @@
 {
   "name": "@hraness/quicksilver",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A word in liquid metal on a link or button: a tiny WebGL runtime with still-picture fallbacks, and a bake CLI for the distance field and stills.",
   "license": "MIT",
   "type": "module",

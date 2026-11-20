@@ -1,6 +1,7 @@
 /**
- * The pure decisions behind `mount`: which appearance, which finish, still or live, how many canvas
- * pixels, and the shader frame for the letters. Nothing here touches the DOM, so it is unit tested.
+ * The pure decisions behind `mount`: which appearance, which finish, still or live, how fast the swell
+ * runs, how many canvas pixels, and the shader frame for the letters. Nothing here touches the DOM, so
+ * it is unit tested.
  */
 import type { Frame, Shape } from "./shader.js";
 export type Theme = "auto" | "light" | "dark";
@@ -28,6 +29,22 @@ export type Environment = {
 };
 /** Still for reduced motion, Save-Data and no WebGL; live otherwise. The still is always in the box first. */
 export declare function chooseMode({ reducedMotion, saveData, webgl }: Environment): Mode;
+/**
+ * How the swell comes to rest. Motion that starts by itself must stop within five seconds (WCAG 2.2.2,
+ * Pause, Stop, Hide), so the swell runs at full pace for `calm` seconds after the letters first draw or
+ * the pointer last moves over, presses or leaves them, then slows to a stop over `fall` seconds.
+ */
+export declare const SETTLE: {
+    readonly calm: 3.5;
+    readonly fall: 1;
+};
+/**
+ * The swell's pace, 1 (full) to 0 (at rest), `since` seconds after the letters first drew or the pointer
+ * last acted on them and `elapsed` seconds after the frame whose pace was `previous`. The pointer brings
+ * full pace back at once, so its rings answer it straight away. The fall counts every second that passed,
+ * off screen and in a hidden tab included, so a swell left running stops on the next frame it gets.
+ */
+export declare function pace(previous: number, since: number, elapsed: number): number;
 /** Canvas pixels for a box of `width` by `height` CSS px: the device ratio up to 2, within `budget` pixels. */
 export declare function canvasSize(width: number, height: number, ratio: number, budget?: number): [number, number];
 /**
