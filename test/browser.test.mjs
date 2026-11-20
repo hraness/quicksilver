@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { bake } from '../bin/lib/bake.mjs';
-import { launch, loadPlaywright } from '../bin/lib/browser.mjs';
+import { launch, launchOptions, loadPlaywright, provisioned } from '../bin/lib/browser.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
 const ORIGIN = 'http://quicksilver.test';
@@ -91,8 +91,15 @@ const inked = async (tab, selector, background) => {
 
 try {
   await check('Chromium received one merged disabled-feature switch and muted audio', async () => {
-    const session = await browser.newBrowserCDPSession();
+    const { chromium } = playwright.driver;
+    const options = launchOptions(playwright.defaults);
+    const inspected = await chromium.launch({
+      ...options,
+      executablePath: provisioned(chromium.executablePath()),
+      args: [...options.args, '--enable-automation'],
+    });
     try {
+      const session = await inspected.newBrowserCDPSession();
       const { arguments: argv } = await session.send('Browser.getBrowserCommandLine');
       const disabled = [...new Set([...playwright.defaults, 'PaintHolding', 'MacAppCodeSignClone'])];
       assert.deepEqual(argv.filter((arg) => arg.startsWith('--disable-features=')), [
@@ -100,7 +107,7 @@ try {
       ]);
       assert(argv.includes('--mute-audio'));
     } finally {
-      await session.detach();
+      await inspected.close();
     }
   });
 
